@@ -1,52 +1,98 @@
 version: '3.8'
 
 services:
+
+  # Reverse Proxy Traefik
   reverse-proxy:
-    image: nginx:alpine
+    image: traefik:v2.10
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--entrypoints.web.address=:80"
     ports:
-      - "8081:80"       # Port externe changé pour éviter les conflits
-      - "8443:443"      # Port HTTPS modifié
+      - "8080:80"     # Web
+      - "8081:8080"   # Dashboard
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
-      - frontend
-      - api
-      - flask-app
+      - ecommerce
+      - fastapi
+      - flask
+    networks:
+      - web
 
-  frontend:
-    build: ./api/public
-    ports:
-      - "3000:80"       # Changé de 80:80 pour éviter le conflit
-    volumes:
-      - ./api/public:/usr/share/nginx/html  # Montage pour le développement
-
-  api:
-    build: ./api
+  # App 1 - Django Stripe
+  ecommerce:
+    build: ./priv-rocket-ecommerce-main
     environment:
-      - DB_HOST=mongodb
-      - DB_PORT=27017
-    ports:
-      - "3001:3000"     # Exposé sur un port différent
+      - DJANGO_SETTINGS_MODULE=your_project.settings
+    expose:
+      - "8000"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ecommerce.rule=Host(`stripe.localhost`)"
+      - "traefik.http.services.ecommerce.loadbalancer.server.port=8000"
+    networks:
+      - web
+      - db
+
+  # App 2 - FastAPI
+  fastapi:
+    build: ./FastApi-Docker-main
+    environment:
+      - DB_HOST=fastapi-db
+      - DB_PORT=3306
+      - DB_USER=root
+      - DB_PASSWORD=root
+      - DB_NAME=Item-docker-api
+    expose:
+      - "8000"
     depends_on:
-      - mongodb
+      - fastapi-db
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.fastapi.rule=Host(`api.localhost`)"
+      - "traefik.http.services.fastapi.loadbalancer.server.port=8000"
+    networks:
+      - web
+      - db
 
-  mongodb:
-    image: mongo:5.0
+  # Base de données MySQL pour FastAPI
+  fastapi-db:
+    image: mysql:8.0
     environment:
-      - MONGO_INITDB_ROOT_USERNAME=admin
-      - MONGO_INITDB_ROOT_PASSWORD=password
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_DATABASE=Item-docker-api
     volumes:
-      - mongodb_data:/data/db
+      - mysql_data:/var/lib/mysql
+    networks:
+      - db
 
-  flask-app:
-    build: ./flask-app
-    ports:
-      - "5000:5000"
+  # App 3 - Flask
+  flask:
+    build: ./flask-datta-1752138310-main
     environment:
-      - FLASK_APP=app.py
       - FLASK_ENV=development
-    volumes:
-      - ./flask-app:/app  # Montage pour le développement
+    expose:
+      - "5000"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.flask.rule=Host(`flask.localhost`)"
+      - "traefik.http.services.flask.loadbalancer.server.port=5000"
+    networks:
+      - web
+
+  # App 4 - PHP vulnérable exposée directement
+  php-app:
+    build: ./ProjetDevOps-main
+    ports:
+      - "8082:80"  # Accessible directement
+    networks:
+      - web
 
 volumes:
-  mongodb_data:
+  mysql_data:
+
+networks:
+  web:
+  db:
