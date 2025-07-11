@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Paiement Stripe</title>
+  <script src="https://js.stripe.com/v3/"></script>
+</head>
+<body>
+  <h1>Page de paiement</h1>
+  <button id="payButton">Payer</button>
+
+  <script>
+    // Dans votre fichier index.html
+    document.getElementById('payButton').addEventListener('click', async () => {
+      console.log("Tentative de paiement initiée"); // Vérification du clic
+      
+      try {
+        const response = await fetch('http://localhost:5051/create-checkout-session', {
+          method: 'POST',
+          mode: 'cors', // Activation explicite du CORS
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          credentials: 'include' // Important pour les cookies/sessions
+        });
+
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+        const { sessionId } = await response.json();
+        console.log("Session ID reçu:", sessionId);
+
+        const stripe = Stripe('pk_test_51O51rjArOje5RHk1efwIUykr9RbABxTf2cPREJJCXeBYDd0tXXnDcX6i37EeMA5DQzj9feOutXHEQ5Q6z1nUOoHb009DhpNlKN');
+        const { error } = await stripe.redirectToCheckout({ sessionId });
+
+        if (error) {
+          console.error("Erreur Stripe:", error);
+          alert(`Paiement échoué: ${error.message}`);
+        }
+      } catch (err) {
+        console.error("Erreur lors du processus de paiement:", err);
+        alert("Erreur lors de la connexion au serveur. Voir la console (F12)");
+      }
+    });
+  </script>
+</body>
+</html>
